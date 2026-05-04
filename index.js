@@ -281,18 +281,14 @@ bot.on('callback_query', async (query) => {
 
     const targetUserId = parseInt(data.split('_')[1]);
 
-    if (clickerId !== targetUserId) {
-        return bot.answerCallbackQuery(query.id, { text: "❌ This button is not for you!", show_alert: true });
-    }
-
     if (!settings.channelId) return bot.answerCallbackQuery(query.id, { text: "❌ Channel not configured.", show_alert: true });
 
     try {
-        const member = await bot.getChatMember(settings.channelId, targetUserId);
+        const member = await bot.getChatMember(settings.channelId, clickerId);
         if (!['left', 'kicked'].includes(member.status)) {
-            // Unmute the user
+            // Unmute the clicker
             try {
-                await bot.restrictChatMember(chatId, targetUserId, {
+                await bot.restrictChatMember(chatId, clickerId, {
                     can_send_messages: true,
                     can_send_audios: true,
                     can_send_documents: true,
@@ -309,15 +305,17 @@ bot.on('callback_query', async (query) => {
                 console.error("Unmute error:", e.message);
             }
 
-            verifiedUsers.add(`${chatId}_${targetUserId}`);
-            warnedUsers.delete(`${chatId}_${targetUserId}`);
+            verifiedUsers.add(`${chatId}_${clickerId}`);
+            warnedUsers.delete(`${chatId}_${clickerId}`);
 
             await bot.answerCallbackQuery(query.id, { text: "✅ Verified! You can chat now." });
             
-            // Delete the warning message
-            try {
-                await bot.deleteMessage(chatId, query.message.message_id);
-            } catch (e) {}
+            // Delete the warning message ONLY if they clicked THEIR OWN warning
+            if (clickerId === targetUserId) {
+                try {
+                    await bot.deleteMessage(chatId, query.message.message_id);
+                } catch (e) {}
+            }
         } else {
             await bot.answerCallbackQuery(query.id, { text: "❌ You haven't joined the channel yet!", show_alert: true });
         }
