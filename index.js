@@ -94,6 +94,12 @@ bot.onText(/^\/id/, (msg) => {
     bot.sendMessage(msg.chat.id, `🆔 **Current Chat ID:** \`${msg.chat.id}\``, { parse_mode: 'Markdown' });
 });
 
+bot.on('channel_post', (msg) => {
+    if (msg.text && msg.text.startsWith('/id')) {
+        bot.sendMessage(msg.chat.id, `🆔 **Channel ID:** \`${msg.chat.id}\``, { parse_mode: 'Markdown' });
+    }
+});
+
 // The /fsub method to configure the channel
 bot.onText(/^\/fsub(?:\s+(.+))?/, async (msg, match) => {
     if (msg.chat.type === 'private') return;
