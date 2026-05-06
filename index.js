@@ -3,7 +3,7 @@ const TelegramBot = require('node-telegram-bot-api');
 
 const fs = require('fs');
 
-const token = process.env.BOT_TOKEN || '8370622290:AAFvJNGqQ2kjO2EcDS066MUPFyYnsNvX7cA';
+const token = (process.env.BOT_TOKEN || '8370622290:AAFvJNGqQ2kjO2EcDS066MUPFyYnsNvX7cA').trim();
 
 let settings = { channelId: null, channelLink: null, globalAdmins: [], knownGroups: [] };
 try {
