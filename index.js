@@ -120,22 +120,21 @@ bot.onText(/^\/fsub(?:\s+(.+))?/, async (msg, match) => {
     }
 
     const parts = args.split(' ');
-    settings.channelId = parts[0];
-
+    
+    // Try to get the real chat ID and link from Telegram
     try {
+        const chat = await bot.getChat(parts[0]);
+        settings.channelId = chat.id.toString(); // Always save numeric ID for accurate event matching
+        
         if (parts[1]) {
             settings.channelLink = parts[1];
+        } else if (chat.username) {
+            settings.channelLink = `https://t.me/${chat.username}`;
         } else {
-            // Try to get the real link from Telegram
-            const chat = await bot.getChat(settings.channelId);
-            if (chat.username) {
-                settings.channelLink = `https://t.me/${chat.username}`;
-            } else {
-                settings.channelLink = chat.invite_link || await bot.exportChatInviteLink(settings.channelId);
-            }
+            settings.channelLink = chat.invite_link || await bot.exportChatInviteLink(chat.id);
         }
     } catch (e) {
-        return bot.sendMessage(msg.chat.id, `❌ I couldn't get the invite link for \`${settings.channelId}\`. Please make sure I am an Admin in that channel with the **Invite Users** permission!`, { parse_mode: 'Markdown' });
+        return bot.sendMessage(msg.chat.id, `❌ I couldn't verify or get the link for \`${parts[0]}\`. Please make sure I am an Admin in that channel with the **Invite Users** permission!`, { parse_mode: 'Markdown' });
     }
 
     saveSettings();
@@ -366,7 +365,13 @@ bot.on('polling_error', (error) => {
 // Real-time auto-unmute
 bot.on('chat_member', async (update) => {
     // Only process events from our configured channel
-    if (!settings.channelId || update.chat.id.toString() !== settings.channelId.toString()) return;
+    if (!settings.channelId) return;
+    
+    const isTargetChannel = 
+        update.chat.id.toString() === settings.channelId.toString() || 
+        (update.chat.username && `@${update.chat.username.toLowerCase()}` === settings.channelId.toLowerCase());
+
+    if (!isTargetChannel) return;
 
     // Check if they joined
     if (['member', 'administrator', 'creator'].includes(update.new_chat_member.status)) {
