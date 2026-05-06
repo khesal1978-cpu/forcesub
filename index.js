@@ -164,6 +164,12 @@ bot.on('message', async (msg) => {
     // Ignore commands
     if (msg.text && msg.text.startsWith('/')) return;
 
+    // Ignore Telegram service messages (e.g. "User joined the group")
+    // so they don't consume the user's "1 free message" allowance!
+    if (msg.new_chat_members || msg.left_chat_member || msg.pinned_message || msg.new_chat_title) {
+        return;
+    }
+
     const userId = msg.from.id;
     const chatId = msg.chat.id;
     const userKey = `${chatId}_${userId}`;
