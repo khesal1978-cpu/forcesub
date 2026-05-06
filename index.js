@@ -262,8 +262,7 @@ bot.on('message', async (msg) => {
                     parse_mode: 'Markdown',
                     reply_markup: {
                         inline_keyboard: [
-                            [{ text: "📢 Join Channel", url: settings.channelLink }],
-                            [{ text: "✅ Check & Unmute", callback_data: `unmute_${userId}` }]
+                            [{ text: "📢 Join Channel", url: settings.channelLink }]
                         ]
                     }
                 }
