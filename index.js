@@ -22,10 +22,17 @@ if (!token) {
     process.exit(1);
 }
 
-const bot = new TelegramBot(token, { polling: true });
+const bot = new TelegramBot(token, { 
+    polling: {
+        params: {
+            allowed_updates: ["message", "callback_query", "chat_member", "my_chat_member"]
+        }
+    } 
+});
 
 // Track users we've already warned so we don't spam warnings
-const warnedUsers = new Set();
+// Key: userId, Value: Array of { chatId, messageId }
+const warnedUsersMap = new Map();
 // Track users who have sent their first allowed message
 const firstMessageSent = new Set();
 // Track users who are verified to skip API calls
@@ -210,15 +217,15 @@ bot.on('message', async (msg) => {
                 return;
             }
 
+            const isWarned = warnedUsersMap.has(userId) && warnedUsersMap.get(userId).some(w => w.chatId === chatId);
+
             // This is their 2nd message. Delete it.
             console.log(`[Trace] User ${userId} sent 2nd message without joining. Deleting...`);
             try {
                 await bot.deleteMessage(chatId, msg.message_id);
             } catch (e) {}
 
-            if (warnedUsers.has(userKey)) return;
-
-            warnedUsers.add(userKey);
+            if (isWarned) return;
 
             console.log(`[Trace] Muting user ${userId}...`);
             try {
@@ -257,6 +264,11 @@ bot.on('message', async (msg) => {
                 }
             );
             console.log(`[Trace] Warning sent. Scheduling deletion.`);
+
+            // Add to warned map
+            const userWarnings = warnedUsersMap.get(userId) || [];
+            userWarnings.push({ chatId: chatId, messageId: warningMsg.message_id });
+            warnedUsersMap.set(userId, userWarnings);
 
             // Delete the warning message after 1.4 minutes (84 seconds)
             setTimeout(async () => {
@@ -320,7 +332,10 @@ bot.on('callback_query', async (query) => {
             }
 
             verifiedUsers.add(`${chatId}_${clickerId}`);
-            warnedUsers.delete(`${chatId}_${clickerId}`);
+            if (warnedUsersMap.has(clickerId)) {
+                const warnings = warnedUsersMap.get(clickerId);
+                warnedUsersMap.set(clickerId, warnings.filter(w => w.chatId !== chatId));
+            }
 
             await bot.answerCallbackQuery(query.id, { text: "✅ Verified! You can chat now." });
             
@@ -340,6 +355,59 @@ bot.on('callback_query', async (query) => {
 
 bot.on('polling_error', (error) => {
     console.error(`Polling Error: ${error.message}`);
+});
+
+// Real-time auto-unmute
+bot.on('chat_member', async (update) => {
+    // Only process events from our configured channel
+    if (!settings.channelId || update.chat.id.toString() !== settings.channelId.toString()) return;
+
+    // Check if they joined
+    if (['member', 'administrator', 'creator'].includes(update.new_chat_member.status)) {
+        const userId = update.new_chat_member.user.id;
+        console.log(`[Auto-Unmute] User ${userId} joined the channel!`);
+
+        // Check if they are currently warned anywhere
+        if (warnedUsersMap.has(userId)) {
+            const warnings = warnedUsersMap.get(userId);
+            for (const warning of warnings) {
+                // Unmute them
+                try {
+                    await bot.restrictChatMember(warning.chatId, userId, {
+                        can_send_messages: true,
+                        can_send_audios: true,
+                        can_send_documents: true,
+                        can_send_photos: true,
+                        can_send_videos: true,
+                        can_send_video_notes: true,
+                        can_send_voice_notes: true,
+                        can_send_polls: true,
+                        can_send_other_messages: true,
+                        can_add_web_page_previews: true,
+                        can_invite_users: true
+                    });
+                    
+                    verifiedUsers.add(`${warning.chatId}_${userId}`);
+                    
+                    // Delete the warning message autonomously
+                    try {
+                        await bot.deleteMessage(warning.chatId, warning.messageId);
+                    } catch (e) {}
+                    
+                    // Announce the auto-unmute
+                    const announcement = await bot.sendMessage(warning.chatId, `🎉 **${update.new_chat_member.user.first_name}** just joined the channel and was automatically unmuted!`, { parse_mode: 'Markdown' });
+                    
+                    setTimeout(() => {
+                        bot.deleteMessage(warning.chatId, announcement.message_id).catch(()=>{});
+                    }, 10000); // Delete announcement after 10s
+                } catch (e) {
+                    console.error("Auto-unmute error:", e.message);
+                }
+            }
+            // Clear their warnings
+            warnedUsersMap.delete(userId);
+        }
+    }
 });
 
 // Start Web Dashboard
