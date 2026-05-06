@@ -26,6 +26,8 @@ const bot = new TelegramBot(token, { polling: true });
 
 // Track users we've already warned so we don't spam warnings
 const warnedUsers = new Set();
+// Track users who have sent their first allowed message
+const firstMessageSent = new Set();
 // Track users who are verified to skip API calls
 const verifiedUsers = new Set();
 // Track users who are waiting to send a broadcast
@@ -195,14 +197,20 @@ bot.on('message', async (msg) => {
         console.log(`[Trace] Channel check returned status: ${member.status}`);
         
         if (['left', 'kicked'].includes(member.status)) {
-            if (warnedUsers.has(userKey)) {
-                console.log(`[Trace] User ${userId} already warned, deleting new message...`);
-                try {
-                    await bot.deleteMessage(chatId, msg.message_id);
-                    console.log(`[Trace] Message deleted.`);
-                } catch (e) { console.log(`[Trace] Delete failed: ${e.message}`); }
+            // Allow their first message to go through without warning
+            if (!firstMessageSent.has(userKey)) {
+                console.log(`[Trace] User ${userId} sent their 1st message. Allowed.`);
+                firstMessageSent.add(userKey);
                 return;
             }
+
+            // This is their 2nd message. Delete it.
+            console.log(`[Trace] User ${userId} sent 2nd message without joining. Deleting...`);
+            try {
+                await bot.deleteMessage(chatId, msg.message_id);
+            } catch (e) {}
+
+            if (warnedUsers.has(userKey)) return;
 
             warnedUsers.add(userKey);
 
